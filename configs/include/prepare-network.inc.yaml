@@ -1,0 +1,8 @@
+# include is not yet supported...
+hooks:
+  preup-global:
+    commands:
+      - docker network create $DOCKER_NETWORK_NAME
+    environment:
+      - name: DOCKER_NETWORK_NAME
+        value: $network

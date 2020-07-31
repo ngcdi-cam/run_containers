@@ -1,0 +1,39 @@
+constants:
+  name_prefix: my-container-
+  message_prefix: "Hello "
+  image: alpine
+  start_id: 1
+
+# We start with an empty configuration for each container. We will use rules to build them up.
+containers: [{}, {}]
+
+
+rules:
+  - # For each container, set the property "image" to ...
+    target: image
+    # ... the value of constant `image`
+    value: $image
+    # Therefore, all containers will use an image called `alpine`, which is the value of constant `image`.
+
+    # Alternatively, you can just specify `value: alpine` to hardcode the image name in the rules.
+
+
+  - target: name
+    value: $name_prefix++$id
+    # Where does the $id come from? We have a local constant called "id" ...
+
+    local_constants:
+      - name: id
+        # "id" is auto-incremented for each container. Therefore, for the first container, its value is `start` (defined below). For the second container, its value is `start+1`, etc.
+        type: auto_increment
+        # Start from $start_id (which is 1 as defined in (global) constants section), instead of 0 (by default)
+        start: $start_id
+
+
+  - target: command
+    value: echo "++$message_prefix++$name++"
+    local_constants:
+      - name: name
+        # Get the value of property `name`, and assign it to local constant called `name`
+        type: from_property
+        source: name

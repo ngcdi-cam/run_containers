@@ -1,0 +1,22 @@
+# You can define constants and reuse them later.
+constants:
+  # Define a constant named `docker_image`, whose value is `alpine`
+  docker_image: alpine
+  name_prefix: my-container-
+
+containers:
+  - # Use the value of the constant by prepend the dollar sign "$" to the constant name.
+    image: $docker_image
+
+    # Use ++ to concatenate strings. 
+    name: $name_prefix++1
+    # Here, the name will be `my-container-1`
+    #                         ^^^^^^^^^^^^^
+    #                         $name_prefix
+    
+    command: echo "Hello Container 1"
+
+  - image: $docker_image
+    name: $name_prefix++2
+    command: echo "Hello Container 2"
+

@@ -1,0 +1,39 @@
+constants:
+  network: my-network
+
+containers:
+  - name: my-container-1
+    image: alpine
+    command: ip a
+    network: $network
+  - name: my-container-2
+    image: alpine
+    command: ip a
+    network: $network
+
+# You can define hooks, which are system shell commands that are run at specific times .
+hooks:
+  # Commands in `preup-global` hooks will be run once before any containers start.
+  preup-global:
+    commands:
+      # Create the docker network before the creation of containers.
+      - docker network create $DOCKER_NETWORK_NAME
+    # You can export environment variables to the shell comamnds
+    environment:
+      - # Assign the value of (global) constant `network` to the environment variable named `DOCKER_NETWORK_NAME`.
+        name: DOCKER_NETWORK_NAME
+        value: $network
+  
+  # Commands in `preup` hooks will be run every time when a container starts. 
+  preup:
+    commands:
+      # Let's just echo the container name to be started
+      - echo "Container $DOCKER_CONTAINER_NAME will be started."
+    environment:
+      - name: DOCKER_CONTAINER_NAME
+        value: $container_name
+    # You can define local constants just like what you do for rules.
+    local_constants:
+      - name: container_name
+        type: from_property
+        source: name

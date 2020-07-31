@@ -1,0 +1,13 @@
+# You can simply specify containers to run. 
+# The properties will be passed transparently to docker.containers.run
+# See https://docker-py.readthedocs.io/en/stable/containers.html#docker.models.containers.ContainerCollection.run
+
+containers:
+  - name: my-container-1
+    image: alpine
+    command: echo "Hello Container 1"
+  - name: my-container-2
+    image: alpine
+    command: echo "Hello Container 2"
+
+# Use `docker logs my-container-1` to see the logs of container `my-container-1`.
