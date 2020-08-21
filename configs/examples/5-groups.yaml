@@ -1,1 +1,19 @@
-# Not yet supported
+constants:
+  image_a: alpine
+  image_b: ubuntu
+
+groups:
+  my_group_1:
+    constants:
+      local_cmd: hostname
+    containers:
+      - name: c1
+        command: $local_cmd
+        image: $image_a
+  my_group_2:
+    constants:
+      local_cmd: echo Hello
+    containers:
+      - name: c2
+        command: $local_cmd
+        image: $image_b

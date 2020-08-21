@@ -1,0 +1,14 @@
+constants:
+  q: 10
+  image: alpine
+
+# create q containers with initially empty config
+containers: $q
+
+rules:
+  # set the config in bulk
+  # the `target` is omitted, since we are applying the rule to the root
+  - value:
+      image: $image
+      command: hostname
+

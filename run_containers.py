@@ -22,23 +22,27 @@ class AgentContainer(object):
         return AgentContainer(client.containers.run(**kwargs, detach=(not no_detach)))
 
 
-class AgentContainerCollection(collections.UserList):
+class AgentContainerGroup(collections.UserList):
     class UndefinedConstantError(Exception):
-        pass
+        def __init__(self, constant: str):
+            super().__init__(constant)
 
     class UnknownLocalConstantTypeError(Exception):
-        pass
+        def __init__(self, t: str):
+            super().__init__(t)
 
     def __init__(self):
         self.data = []
 
     @staticmethod
-    def create_containers_from_config(client: docker.DockerClient, config: dict, dry_run: bool = False, no_detach: bool = False):
+    def create_containers_from_config(client: docker.DockerClient, config: dict, external_constants: dict = {}, dry_run: bool = False, no_detach: bool = False):
+        assert type(config) is dict
         global_constants = config.get("constants", {})
+        assert type(global_constants) is dict
+        global_constants.update(external_constants)
         global_constants["base_dir"] = os.getcwd()
         constants = {}
 
-        # substitute constants if needed
         def __eval_expr(expr, cast_to_str: bool = False, sep: str = "++"):
             if type(expr) != str:
                 return expr
@@ -52,7 +56,8 @@ class AgentContainerCollection(collections.UserList):
                     try:
                         return constants[token[1:]]
                     except KeyError as e:
-                        raise AgentContainerCollection.UndefinedConstantError(e)
+                        raise AgentContainerGroup.UndefinedConstantError(
+                            e.__str__())
                 else:
                     return token
 
@@ -63,11 +68,11 @@ class AgentContainerCollection(collections.UserList):
                     try:
                         ret += str(constants[token[1:]])
                     except KeyError as e:
-                        raise AgentContainerCollection.UndefinedConstantError(e)
+                        raise AgentContainerGroup.UndefinedConstantError(e)
                 else:
                     ret += str(token)
             return ret
-        
+
         def __eval_expr_recursive(data):
             if type(data) == str:
                 return __eval_expr(data)
@@ -88,6 +93,9 @@ class AgentContainerCollection(collections.UserList):
             return functools.reduce(operator.getitem, map(__eval_expr, path.split(sep)), data)
 
         def __set_value_by_path(path: str, data: dict, new_value, sep: str = "->"):
+            if path is None or path == "":
+                data.update(new_value)
+                return
             path_tokenized = list(map(__eval_expr, path.split(sep)))
             p = data
             for key in path_tokenized[:-1]:
@@ -96,7 +104,7 @@ class AgentContainerCollection(collections.UserList):
                 p = p[key]
             p[path_tokenized[-1]] = new_value
 
-        available_constant_evaluators = {
+        available_local_constant_evaluators = {
             "auto_increment": lambda index, element, options: index + __eval_expr(options.get("start", 0)),
             "from_property": lambda index, element, options: __get_value_by_path(options["source"], element)
         }
@@ -108,10 +116,13 @@ class AgentContainerCollection(collections.UserList):
                 assert "type" in constant
                 vname = constant["name"]
                 vtype = constant["type"]
-                if vtype not in available_constant_evaluators:
-                    raise AgentContainerCollection.UnknownLocalConstantTypeError()
 
-                evaluator = available_constant_evaluators.get(vtype)
+                try:
+                    evaluator = available_local_constant_evaluators[vtype]
+                except KeyError:
+                    raise AgentContainerGroup.UnknownLocalConstantTypeError(
+                        vtype)
+
                 values[vname] = evaluator(
                     index, container, constant)
             return values
@@ -126,21 +137,50 @@ class AgentContainerCollection(collections.UserList):
                 environment[ename] = __eval_expr(eexpr, True)
             return environment
 
-        container_collection = AgentContainerCollection()
+        def __run_hooks(name: str, config: dict, index: int = -1, container: dict = {}):
+            nonlocal constants, global_constants
+
+            if "hooks" in config and name in config["hooks"]:
+                print("Running {} hook...".format(name))
+                hooks = config["hooks"][name]
+
+                local_constants = __eval_local_constants(
+                    hooks.get("local_constants", []), index, container) if index != -1 else {}
+
+                constants = {**local_constants, **global_constants}
+
+                environment = __eval_environment(hooks.get("environment", []))
+                print("Environment is {}".format(environment))
+
+                assert "commands" in hooks
+                for command in hooks["commands"]:
+                    print("Running command: {}".format(command))
+                    subprocess.run(command, shell=True, env=environment)
+
+        container_collection = AgentContainerGroup()
 
         constants = global_constants
         assert "containers" in config
-        containers: list = __eval_expr_recursive(config["containers"])
+        assert type(config["containers"]) in (list, int, str)
+
+        containers = []
+        if type(config["containers"]) is int:
+            containers = [{} for _ in range(config["containers"])]
+        elif type(config["containers"]) is str:
+            containers_q = __eval_expr(config["containers"])
+            assert type(containers_q) is int
+            containers = [{} for _ in range(containers_q)]
+        else:
+            containers = __eval_expr_recursive(config["containers"])
 
         # process rules
         if "rules" in config:
             rules = config["rules"]
             for rule in rules:
-                assert "target" in rule
                 assert "value" in rule
 
-                rule_target = rule["target"]
-                rule_expr = rule["value"]
+                rule_target = rule.get("target")
+                rule_expr = rule.get("value")
 
                 for index in range(len(containers)):
                     container = containers[index]
@@ -151,74 +191,84 @@ class AgentContainerCollection(collections.UserList):
                             rule["local_constants"], index, container)
 
                     constants = {**rule_local_constants, **global_constants}
-                    new_value = __eval_expr(rule_expr)
+                    new_value = __eval_expr_recursive(rule_expr)
                     __set_value_by_path(
                         rule_target, container, new_value)
 
         print("Containers to start: ")
         print(containers)
 
-        if "hooks" in config and "preup-global" in config["hooks"]:
-            print("Running preup-global hook...")
-            preup_global_hooks = config["hooks"]["preup-global"]
-
-            constants = global_constants
-            environment = __eval_environment(preup_global_hooks.get("environment", {}))
-
-            print("Environment is {}".format(environment))
-
-            assert "commands" in preup_global_hooks
-            for command in preup_global_hooks["commands"]:
-                print("Running command: {}".format(command))
-                subprocess.run(command, shell=True, env=environment)
+        __run_hooks("preup-global", config)
 
         for index in range(len(containers)):
             container = containers[index]
-            if "hooks" in config and "preup" in config["hooks"]:
-                print("Running preup hook...")
-                preup_hooks = config["hooks"]["preup"]
-                local_constants = __eval_local_constants(
-                    preup_hooks.get("local_constants", []), index, container)
-                constants={**local_constants, **global_constants}
-                environment = __eval_environment(
-                    preup_hooks.get("environment", []))
-                print("Environment is {}".format(environment))
 
-                assert "commands" in preup_hooks
-                for command in preup_hooks["commands"]:
-                    print("Running command: {}".format(command))
-                    subprocess.run(command, shell=True, env=environment)
+            __run_hooks("preup", config, index, container)
 
-            print("Starting container {}...".format(
-                container["name"] if "name" in container else "#" + index))
+            container_identifier = container["name"] if "name" in container else (
+                "#" + str(index))
+
+            print("Starting container {}...".format(container_identifier))
             if dry_run:
                 print("Not running container because of dry-run mode is enabled")
             else:
                 container_collection.append(
                     AgentContainer.run_container(client=client, no_detach=no_detach, **container))
-            print("Container {} started.".format(container["name"]))
+            print("Container {} started.".format(container_identifier))
         return container_collection
 
 
+class AgentContainerGroupCollection(collections.UserDict):
+    def __init__(self):
+        self.data = {}
+
+    @staticmethod
+    def create_container_groups_from_config(client: docker.DockerClient, config: dict, dry_run: bool = False, no_detach: bool = False):
+        assert type(config) is dict
+        container_group_collection = AgentContainerGroupCollection()
+
+        if "containers" in config:
+            assert "groups" not in config
+            container_group_collection["DEFAULT"] = AgentContainerGroup.create_containers_from_config(
+                client, config, {}, dry_run, no_detach)
+
+        elif "groups" in config:
+            assert "rules" not in config
+            assert "hooks" not in config
+
+            global_constants = config.get("constants", {})
+            assert type(global_constants) is dict
+
+            for name, group in config["groups"].items():
+                print("Starting group {}".format(name))
+                container_group_collection[name] = AgentContainerGroup.create_containers_from_config(
+                    client, group, global_constants, dry_run, no_detach)
+
+        else:
+            raise Exception("No containers or groups specified")
+
+
 if __name__ == "__main__":
-    parser=argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         description='Runs containers. By default uses: config.yaml')
     parser.add_argument('-c', '--config', action='store',
                         help='run with a specific configuration file', default="config.yaml")
-    parser.add_argument('-d', '--dry-run', action='store_true', help='dry run without running containers')
-    parser.add_argument('-n', '--no-detach', action='store_true', help='do not detach from containers')
+    parser.add_argument('-d', '--dry-run', action='store_true',
+                        help='dry run without running containers')
+    parser.add_argument('-n', '--no-detach', action='store_true',
+                        help='do not detach from containers')
 
     # TODO: support configuration file overlay
-    args=parser.parse_args()
+    args = parser.parse_args()
 
-    config=hiyapyco.load(
+    config = hiyapyco.load(
         args.config,
         method=hiyapyco.METHOD_SIMPLE,
         interpolate=True,
         usedefaultyamlloader=True,
     )
 
-    docker_client=docker.from_env()
+    docker_client = docker.from_env()
 
-    container_collection=AgentContainerCollection.create_containers_from_config(
+    container_collection = AgentContainerGroupCollection.create_container_groups_from_config(
         docker_client, config, args.dry_run, args.no_detach)

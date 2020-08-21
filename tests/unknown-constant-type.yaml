@@ -1,0 +1,8 @@
+containers: 2
+
+rules:
+  - target: image
+    value: $image_name
+    local_constants:
+      - name: image_name
+        type: unknown
