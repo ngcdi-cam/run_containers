@@ -1,0 +1,20 @@
+constants:
+  # lazy constant, evaluated on use, which enables access to group-local constants.
+  # here `$name` is defined in group constants.
+  ^rules:
+    - value:
+        image: alpine
+        name: $name
+        command: echo hello ++$name
+
+groups:
+  group_1:
+    constants:
+      name: name_1
+    containers: 1
+    rules: $^rules
+  group_2:
+    constants:
+      name: name_2
+    containers: 1
+    rules: $^rules

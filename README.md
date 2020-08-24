@@ -30,6 +30,11 @@ $ run_containers.py -c configs/examples/1-basic.yaml
 
 See `configs/examples` for a walkthrough.
 
+## Notes
+
+In `constants` section of the config
+prepend `^` to the constant name to disable expression evaluation (for example in case of using a common rule as the constant)
+
 ## Contributors
 
 * Peter Zhang

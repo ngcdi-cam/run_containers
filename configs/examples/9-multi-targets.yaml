@@ -1,0 +1,32 @@
+constants:
+  name_prefix: my-container-
+  message_prefix: "Hello "
+  image: alpine
+  start_id: 1
+  some_env: my_env
+
+containers: [{}, {}]
+
+
+rules:
+  - target: image
+    value: $image
+
+  - target: environment->SOME_ENV
+    value: $some_env
+  
+  # You can specify multiple targets for a rule
+  - target: [name, hostname]
+    value: $name_prefix++$id
+
+    local_constants:
+      - name: id
+        type: auto_increment
+        start: $start_id
+
+  - target: command
+    value: echo "++$message_prefix++$name++"
+    local_constants:
+      - name: name
+        type: from_property
+        source: name
