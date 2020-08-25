@@ -23,17 +23,14 @@ $ sudo install -m 755 run_containers.py /usr/local/bin
 ## Getting Started
 
 ```
-$ run_containers.py -c configs/examples/1-basic.yaml
+$ run_containers.py configs/examples/1-basic.yaml
 ```
+
+Please note the original `-c` option has been deprecated. Please remove `-c` from the argument list.
 
 ## Writing Your Own Configuration files
 
 See `configs/examples` for a walkthrough.
-
-## Notes
-
-In `constants` section of the config
-prepend `^` to the constant name to disable expression evaluation (for example in case of using a common rule as the constant)
 
 ## Contributors
 
