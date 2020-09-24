@@ -13,7 +13,7 @@ import subprocess
 import pprint
 import logging
 
-logging.basicConfig(level='INFO')
+logging.basicConfig(level='INFO', format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
 
 logger = logging.getLogger()
 
@@ -179,13 +179,13 @@ class AgentContainerGroup(collections.UserList):
         assert type(config) is dict
         assert "constants" not in config or type(config["constants"]) is dict
         global_constants = {}
-        assert type(global_constants) is dict
-        global_constants.update(external_constants)
+        assert type(external_constants) is dict
+
         global_constants["base_dir"] = os.getcwd()
 
-        for k, v in config.get("constants", {}).items():
+        for k, v in { **external_constants, **config.get("constants", {}) }.items():
             assert type(k) is str
-            assert len(k) >= 1
+            assert type(k) is not str or len(k) >= 1
             if k[0] != '^': # lazy constant
                 v = __eval_expr_recursive(global_constants, v)
             global_constants[k] = v
